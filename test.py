@@ -2,8 +2,8 @@ from __future__ import division
 import numpy as np
 from matplotlib import pyplot as plt
 
-import Kalman
-from Gaussians import Gaussian
+import kalman
+from gaussians import Gaussian
 
 def plot_gaussian_2D(mu, lmbda, color='b', centermarker=True):
     '''

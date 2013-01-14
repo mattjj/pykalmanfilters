@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 
-from Gaussians import Gaussian
+from gaussians import Gaussian
 
 class ForwardFilter(object):
     '''
