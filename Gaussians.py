@@ -12,8 +12,6 @@ class Gaussian(object):
     using calls to solvers which may be more efficient and more numerically
     stable
 
-    the 'i' prefix on a method stands for "in-place"
-
     if the object's state is low-rank in one domain and an operation that
     requires an inverse is requested, a LinAlgError will probably pop out
     '''
@@ -66,7 +64,7 @@ class Gaussian(object):
         self._J = self._h = None # invalidate
         return self
 
-    def ilinear_transform(self,A):
+    def inplace_linear_transform(self,A):
         if self._is_diagonal:
             self._Sigma = np.diag(self.Sigma)
             self._is_diagonal = False
@@ -88,7 +86,7 @@ class Gaussian(object):
         self._Sigma = self._mu = None # invalidate
         return self
 
-    def ilinear_substitution(self,A):
+    def inplace_linear_substitution(self,A):
         if self._is_diagonal:
             self._J = np.diag(self.J)
             self._is_diagonal = False
@@ -111,9 +109,9 @@ class Gaussian(object):
     def __mul__(self,other):
         return self.__class__(h=self.h.copy(),J=self.J.copy()).__imul__(other)
 
-    def linear_transformation(self,A):
-        return self.__class__(mu=self.mu,Sigma=self.Sigma).ilinear_transformation(A)
+    def linear_transform(self,A):
+        return self.__class__(mu=self.mu,Sigma=self.Sigma).inplace_linear_transform(A)
 
     def linear_substitution(self,A):
-        return self.__class__(h=self.h,J=self.J).ilinear_substitution(A)
+        return self.__class__(h=self.h,J=self.J).inplace_linear_substitution(A)
 
