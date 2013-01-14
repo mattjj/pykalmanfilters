@@ -38,6 +38,7 @@ initial_distn = Gaussian(np.zeros(2),np.eye(2))
 smoothed_distns = Kalman.smooth(A,B,C,D,initial_distn,y)
 mus = np.array([d.mu for d in smoothed_distns])
 
+plt.plot(x[:,0],x[:,1],'kx-.')
 plt.plot(y[:,0],y[:,1],'bx-')
 plt.plot(mus[:,0],mus[:,1],'r.-')
 for d in smoothed_distns:
