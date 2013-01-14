@@ -35,7 +35,7 @@ y = (C.dot(x.T) + D.dot(np.random.normal(size=x.shape).T)).T
 
 initial_distn = Gaussian(np.zeros(2),np.eye(2))
 
-smoothed_distns = Kalman.smooth(A,B,C,D,initial_distn,y)
+smoothed_distns = kalman.smooth(A,B,C,D,initial_distn,y)
 mus = np.array([d.mu for d in smoothed_distns])
 
 plt.plot(x[:,0],x[:,1],'kx-.')

@@ -1,6 +1,9 @@
 from __future__ import division
 import numpy as np
 
+# TODO try splitting into a distribution class and a potential class, then have
+# the parent class merge those two
+
 class Gaussian(object):
     '''
     + means return the marginal sum (convolve the pdfs)
@@ -95,10 +98,12 @@ class Gaussian(object):
         self._Sigma = self._mu = None # invalidate
         return self
 
-    def condition_on(self,crosscov,other):
+    def condition_on(self,Sigma_xy,Sigma_yy,other):
+        # condition on an observation distribution related to this distribution
+        # via Sigma_xx Sigma_xy Sigmayy as block components
         raise NotImplementedError
 
-    def marginalize_against(self,crosscov,other):
+    def marginalize_against(self,A,other):
         raise NotImplementedError
 
     ### boilerplate

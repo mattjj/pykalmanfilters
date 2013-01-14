@@ -17,15 +17,17 @@ class ForwardFilter(object):
 
         self.n = A.shape[0]
 
-        self.distns = [initial_distn]
+        self.distns = []
+        self.next_prediction = initial_distn
 
     def step(self,data):
         data = np.atleast_1d(data)
 
-        # predict next state
-        new_distn = self.distns[-1].linear_transform(self.A) + Gaussian(mu=np.zeros(self.n),Sigma=self.BBT)
-        # condition on new observation
-        new_distn *= Gaussian(mu=data,Sigma=self.DDT).inplace_linear_substitution(self.C)
+        # fold in observation
+        new_distn = self.next_prediction * Gaussian(mu=data,Sigma=self.DDT).inplace_linear_substitution(self.C)
+
+        # make prediction
+        self.next_prediction = new_distn.linear_transform(self.A) + Gaussian(mu=np.zeros(self.n),Sigma=self.BBT)
 
         self.distns.append(new_distn)
         return new_distn
@@ -40,22 +42,25 @@ def smooth(A,B,C,D,initial_distn,data):
     obs = [Gaussian(mu=d,Sigma=DDT).inplace_linear_substitution(C) for d in data]
 
     # forward pass
-    forward_distns = [initial_distn]
+    next_prediction = initial_distn
+    forward_distns = []
     for o in obs:
-        forward_distns.append(o*(forward_distns[-1].linear_transform(A) + Gaussian(mu=np.zeros(n),Sigma=BBT)))
-    forward_distns = forward_distns[1:]
+        forward_distns.append(next_prediction * o)
+        next_prediction = forward_distns[-1].linear_transform(A) + Gaussian(mu=np.zeros(n),Sigma=BBT)
 
-    # get final (unconditional) distn, p(x_{T}) if data goes (y_0,...,y_{T-1})
+    # get final (unconditional) distn, p(x_{T-1}) if data goes (y_0,...,y_{T-1})
     final_distn = initial_distn
-    for i in range(data.shape[0]):
+    for i in range(data.shape[0]-1):
         final_distn.inplace_linear_transform(A)
         final_distn += Gaussian(mu=np.zeros(n),Sigma=BBT)
 
     # backwards pass
-    backward_distns = [final_distn]
+    prev_prediction = final_distn
+    backward_distns = []
     for o in obs[::-1]:
-        backward_distns.append(o*(backward_distns[-1].linear_substitution(A) + Gaussian(mu=np.zeros(n),Sigma=BBT)))
-    backward_distns = backward_distns[:0:-1]
+        backward_distns.append(prev_prediction * o)
+        prev_prediction = backward_distns[-1].linear_substitution(A) + Gaussian(mu=np.zeros(n),Sigma=BBT)
+    backward_distns = backward_distns[::-1]
 
     # return smoothed distributions
     return [d1*d2 for d1,d2 in zip(forward_distns,backward_distns)]
@@ -76,7 +81,8 @@ class FasterForwardFilter(ForwardFilter):
         self.distn.inplace_linear_transform(self.A)
         self.distn += Gaussian(mu=np.zeros(data.shape[0]),Sigma=self.BBT)
         # condition
-        self.distn.condition_on(data,self.DDT,self.C.dot(self.distn.Sigma))
+        self.distn.condition_on(self.C.dot(self.distn.Sigma),self.C.dot(self.distn.Sigma).dot(self.C.T),
+                                            Gaussian(mu=data,Sigma=self.DDT))
 
         return self.distn
 
