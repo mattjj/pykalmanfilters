@@ -3,37 +3,15 @@ import numpy as np
 
 from gaussians import Gaussian
 
-class ForwardFilter(object):
-    '''
-    implemented in a real-time style
-    '''
+def filter_step(A,B,C,D,prev_distn,data):
+    # predict
+    new_distn = prev_distn.linear_transform(A) + Gaussian(mu=np.zeros(A.shape[1]),Sigma=B.dot(B.T))
+    # fold in observation
+    new_distn *= Gaussian(mu=data,Sigma=D.dot(D.T)).inplace_linear_substitution(C)
+    return new_distn
 
-    def __init__(self,A,B,C,D,initial_distn):
-        A,B,C,D = map(np.atleast_2d,(A,B,C,D))
-        self.A = A
-        self.BBT = B.dot(B.T)
-        self.C = C
-        self.DDT = D.dot(D.T)
-
-        self.n = A.shape[0]
-
-        self.distns = []
-        self.next_prediction = initial_distn
-
-    def step(self,data):
-        data = np.atleast_1d(data)
-
-        # fold in observation
-        new_distn = self.next_prediction * Gaussian(mu=data,Sigma=self.DDT).inplace_linear_substitution(self.C)
-
-        # make prediction
-        self.next_prediction = new_distn.linear_transform(self.A) + Gaussian(mu=np.zeros(self.n),Sigma=self.BBT)
-
-        self.distns.append(new_distn)
-        return new_distn
-
-def smooth(A,B,C,D,initial_distn,data):
-    # two-filter version (not RTS version)
+def smooth_twofilter(A,B,C,D,initial_distn,data):
+    'two-filter version (not RTS version) written for generic ops, not speed'
     n = A.shape[0]
     BBT = B.dot(B.T)
     DDT = D.dot(D.T)
@@ -65,24 +43,10 @@ def smooth(A,B,C,D,initial_distn,data):
     # return smoothed distributions
     return [d1*d2 for d1,d2 in zip(forward_distns,backward_distns)]
 
+# TODO smooth_rts_simple
 
-class FasterForwardFilter(ForwardFilter):
-    '''
-    like Filter but uses special methods to avoid inverses and does updates in-place
-    '''
-    def __init__(self,*args,**kwargs):
-        super(FasterForwardFilter,self).__init__(*args,**kwargs)
-        self.distn = self.distns[0]
-        del self.distns
+def filter_step_efficient():
+    raise NotImplementedError
 
-    def step(self,data):
-        data = np.atleast_1d(data)
-        # predict
-        self.distn.inplace_linear_transform(self.A)
-        self.distn += Gaussian(mu=np.zeros(data.shape[0]),Sigma=self.BBT)
-        # condition
-        self.distn.condition_on(self.C.dot(self.distn.Sigma),self.C.dot(self.distn.Sigma).dot(self.C.T),
-                                            Gaussian(mu=data,Sigma=self.DDT))
-
-        return self.distn
-
+def smooth_rts_efficient():
+    raise NotImplementedError

@@ -1,22 +1,12 @@
 from __future__ import division
 import numpy as np
 
-# TODO try splitting into a distribution class and a potential class, then have
-# the parent class merge those two
+from util import solve_diagonal_plus_lowrank
 
 class Gaussian(object):
     '''
     + means return the marginal sum (convolve the pdfs)
     * means condition one on the other (multiply the pdfs)
-
-    the extra methods condition_on() and marginalize_against() can be written in
-    terms of + and *, but under the hood condition_on() preserves the
-    distribution form and marginalize_against() preserves the information form
-    using calls to solvers which may be more efficient and more numerically
-    stable
-
-    if the object's state is low-rank in one domain and an operation that
-    requires an inverse is requested, a LinAlgError will probably pop out
     '''
 
     def __init__(self,mu=None,Sigma=None,h=None,J=None):
@@ -98,15 +88,43 @@ class Gaussian(object):
         self._Sigma = self._mu = None # invalidate
         return self
 
-    def condition_on(self,Sigma_xy,Sigma_yy,other):
-        # condition on an observation distribution related to this distribution
-        # via Sigma_xx Sigma_xy Sigmayy as block components
-        raise NotImplementedError
+    # these are written to take covariance/information blocks so that they can
+    # be used with approximations to nonlinear observations (e.g. using the
+    # unscented transform in the unscented Kalman filter)
 
-    def marginalize_against(self,A,other):
-        raise NotImplementedError
+    def inplace_condition_on(self,Sigma_xy,Sigma_yy,my_prediction,other):
+        'maintains distribution form, computes updates using Schur complements'
+        self.Sigma, self.mu # make sure we are in distribution form
+        self._mu += Sigma_xy.dot(np.linalg.solve(Sigma_yy+other.Sigma,other.mu - my_prediction))
+        self._Sigma -= Sigma_xy.dot(np.linalg.solve(Sigma_yy+other.Sigma,Sigma_xy.T))
+        self._J = self._h = None # invalidate
 
-    ### boilerplate
+    def inplace_condition_on_diag_plus_lowrank(self,Sigma_xy,Sigma_yy_factor,my_prediction,other):
+        'maintains distribution form, faster and better Schur complement solving!'
+        assert other._is_diagonal
+        self.Sigma, self.mu # make sure we are in distribution form
+        self._mu += Sigma_xy.dot(solve_diagonal_plus_lowrank(other._Sigma,Sigma_yy_factor,
+                                    Sigma_yy_factor.T,other.mu-my_prediction))
+        self._Sigma -= Sigma_xy.dot(solve_diagonal_plus_lowrank(other._Sigma,Sigma_yy_factor,
+                                        Sigma_yy_factor.T,Sigma_xy.T))
+        self._J = self._h = None # invalidate
+
+    def inplace_marginalize_against(self,Sigma_xy,Sigma_yy,my_prediction,other):
+        '''
+        maintains distribution form, useful in backwards RTS smoothing pass
+        Sigma_xy should be something like Sigma_{t|t}.dot(A.T)
+        Sigma_yy should be P_{t+1|t}
+        other.Sigma should be P{t+1|T}
+        '''
+        self.Sigma, self.mu # make sure we are in distirbution form
+        self._mu += Sigma_xy.dot(np.linalg.solve(Sigma_yy,other.mu - my_prediction))
+        # TODO a little wasteful
+        # drops T's because of symmetric matrices
+        self._Sigma += Sigma_xy.dot(np.linalg.solve(Sigma_yy,
+            np.linalg.solve(Sigma_yy,other.Sigma - Sigma_yy).dot(Sigma_xy.T)))
+        self._J = self._h = None # invalidate
+
+    ### boilerplate to provide non-destructive functions in terms of in-place versions
 
     def __add__(self,other):
         return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).__iadd__(other)
@@ -114,9 +132,18 @@ class Gaussian(object):
     def __mul__(self,other):
         return self.__class__(h=self.h.copy(),J=self.J.copy()).__imul__(other)
 
-    def linear_transform(self,A):
-        return self.__class__(mu=self.mu,Sigma=self.Sigma).inplace_linear_transform(A)
+    def linear_transform(self,*args,**kwargs):
+        return self.__class__(mu=self.mu,Sigma=self.Sigma).inplace_linear_transform(*args,**kwargs)
 
-    def linear_substitution(self,A):
-        return self.__class__(h=self.h,J=self.J).inplace_linear_substitution(A)
+    def linear_substitution(self,*args,**kwargs):
+        return self.__class__(h=self.h,J=self.J).inplace_linear_substitution(*args,**kwargs)
+
+    def condition_on(self,*args,**kwargs):
+        return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_condition_on(*args,**kwargs)
+
+    def condition_on_diag_plus_lowrank(self,*args,**kwargs):
+        return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_condition_on_diag_plus_lowrank(*args,**kwargs)
+
+    def marginalize_agaist(self,*args,**kwargs):
+        return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_marginalize_against(*args,**kwargs)
 
