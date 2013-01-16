@@ -3,6 +3,17 @@ import numpy as np
 
 from gaussians import Gaussian, OptimizedGaussian
 
+'''
+Demo file of simple Kalman filter and smoother implementations
+
+There are versions using generic Gaussian operations and also versions using the
+somewhat more efficient solver-based methods provided by OptimizedGaussian in
+gaussians.py.
+
+Additionally, there are two smoothing algorithm options: the two-filter version
+and the slightly less clear Rauch-Tung-Striebel version.
+'''
+
 ###############
 #  Filtering  #
 ###############
@@ -75,6 +86,7 @@ def smooth_generic_twofilter(A,B,C,D,initial_distn,data):
     return [d1*d2 for d1,d2 in zip(forward_distns,backward_distns)]
 
 def smooth_rts_optimized(A,B,C,D,initial_distn,data):
+    'RTS smoother written to stay in distribution form'
     initial_distn = OptimizedGaussian(initial_distn.mu,initial_distn.Sigma)
 
     n = A.shape[0]
@@ -95,7 +107,9 @@ def smooth_rts_optimized(A,B,C,D,initial_distn,data):
 
     return distns
 
-# TODO not sure about the right abstraction for this operation yet
+# TODO not sure about the right abstraction for this operation yet... it should
+# probably be a combination of conditioning operations, but I haven't massaged
+# the algebra into the right form
 def _rts_backward_step_optimized(A,BBT,dprev,dnext):
     P_tp1_t = A.dot(dprev.Sigma).dot(A.T) + BBT
     dprev._mu += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t,dnext.mu - A.dot(dprev.mu)))
