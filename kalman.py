@@ -1,5 +1,6 @@
 from __future__ import division
 import numpy as np
+na = np.newaxis
 
 from gaussians import Gaussian, OptimizedGaussian
 
@@ -133,11 +134,21 @@ def ukf_optimized(A,B,f,d,initial_distn,data):
     next_prediction = initial_distn
     forward_distns = []
     for d in data:
+        # map our current state belief into unscented form
         points,mean_weights,cov_weights = unscented_transform(next_prediction.mu,next_prediction.Sigma,1,1)
+
+        # pass unscented representation through the nonlinear likelihood
         Z = f(points)
+
+        # calculate linearized statistics
         zbar = mean_weights.dot(Z)
-        Sigma_xy = ((points - points[0]).T*cov_weights).dot(Z - zbar)
-        forward_distns.append(next_prediction.inplace_condition_on_diag_plus_lowrank_cov(Sigma_xy,(Z-zbar).T*cov_weights,Z-zbar,zbar,OptimizedGaussian(d,dsq)))
+        Zcentered = Z - zbar
+        Sigma_xy = ((points - points[0]).T*cov_weights).dot(Zcentered)
+        Zcentered *= np.sqrt(cov_weights)[:,na]
+
+        # do the usual kalman filter step (efficiently!)
+        forward_distns.append(next_prediction.inplace_condition_on_diag_plus_lowrank_cov(
+            Sigma_xy,Zcentered.T,Zcentered,zbar,OptimizedGaussian(d,dsq)))
         next_prediction = forward_distns[-1].linear_transform(A) + OptimizedGaussian(np.zeros(n),BBT)
 
     return forward_distns
