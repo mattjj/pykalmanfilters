@@ -3,6 +3,8 @@ import numpy as np
 
 from util import solve_diagonal_plus_lowrank
 
+# TODO split this into two classes, wrap them into one
+
 class Gaussian(object):
     '''
     + means return the marginal sum (convolve the pdfs)
@@ -88,42 +90,6 @@ class Gaussian(object):
         self._Sigma = self._mu = None # invalidate
         return self
 
-    # these are written to take covariance/information blocks so that they can
-    # be used with approximations to nonlinear observations (e.g. using the
-    # unscented transform in the unscented Kalman filter)
-
-    def inplace_condition_on(self,Sigma_xy,Sigma_yy,my_prediction,other):
-        'maintains distribution form, computes updates using Schur complements'
-        self.Sigma, self.mu # make sure we are in distribution form
-        self._mu += Sigma_xy.dot(np.linalg.solve(Sigma_yy+other.Sigma,other.mu - my_prediction))
-        self._Sigma -= Sigma_xy.dot(np.linalg.solve(Sigma_yy+other.Sigma,Sigma_xy.T))
-        self._J = self._h = None # invalidate
-
-    def inplace_condition_on_diag_plus_lowrank(self,Sigma_xy,Sigma_yy_factor,my_prediction,other):
-        'maintains distribution form, faster and better Schur complement solving!'
-        assert other._is_diagonal
-        self.Sigma, self.mu # make sure we are in distribution form
-        self._mu += Sigma_xy.dot(solve_diagonal_plus_lowrank(other._Sigma,Sigma_yy_factor,
-                                    Sigma_yy_factor.T,other.mu-my_prediction))
-        self._Sigma -= Sigma_xy.dot(solve_diagonal_plus_lowrank(other._Sigma,Sigma_yy_factor,
-                                        Sigma_yy_factor.T,Sigma_xy.T))
-        self._J = self._h = None # invalidate
-
-    def inplace_marginalize_against(self,Sigma_xy,Sigma_yy,my_prediction,other):
-        '''
-        maintains distribution form, useful in backwards RTS smoothing pass
-        Sigma_xy should be something like Sigma_{t|t}.dot(A.T)
-        Sigma_yy should be P_{t+1|t}
-        other.Sigma should be P{t+1|T}
-        '''
-        self.Sigma, self.mu # make sure we are in distirbution form
-        self._mu += Sigma_xy.dot(np.linalg.solve(Sigma_yy,other.mu - my_prediction))
-        # TODO a little wasteful
-        # drops T's because of symmetric matrices
-        self._Sigma += Sigma_xy.dot(np.linalg.solve(Sigma_yy,
-            np.linalg.solve(Sigma_yy,other.Sigma - Sigma_yy).dot(Sigma_xy.T)))
-        self._J = self._h = None # invalidate
-
     ### boilerplate to provide non-destructive functions in terms of in-place versions
 
     def __add__(self,other):
@@ -138,12 +104,84 @@ class Gaussian(object):
     def linear_substitution(self,*args,**kwargs):
         return self.__class__(h=self.h,J=self.J).inplace_linear_substitution(*args,**kwargs)
 
+
+class OptimizedGaussian(Gaussian):
+    'adds functions that maintain distribution form and avoid inverses by using solvers'
+
+    def inplace_condition_on(self,C,obs_distn):
+        'same as self*obs_distn.linear_substitution(C)'
+        return self.inplace_condition_on_cov(
+                self.Sigma.dot(C.T),C.dot(self.Sigma).dot(C.T),C.dot(self.mu),obs_distn)
+
+    def inplace_condition_on_cov(self,Sigma_xy,Sigma_yy,my_prediction,obs_distn):
+        'cov version useful for linearized approximations; compare to inplace_condition_on for the idea'
+        self.Sigma, self.mu # make sure we are in distribution form
+        self._mu += Sigma_xy.dot(np.linalg.solve(Sigma_yy+obs_distn.Sigma,obs_distn.mu - my_prediction))
+        self._Sigma -= Sigma_xy.dot(np.linalg.solve(Sigma_yy+obs_distn.Sigma,Sigma_xy.T))
+        self._J = self._h = None # invalidate
+        return self
+
+    def inplace_condition_on_diag_plus_lowrank(self,C,obs_distn):
+        return self.inplace_condition_on_diag_plus_lowrank_cov(
+                self.Sigma.dot(C.T),C.dot(self.Sigma),C.T,C.dot(self.mu),obs_distn)
+
+    def inplace_condition_on_diag_plus_lowrank_cov(self,Sigma_xy,
+            Sigma_yy_factor1,Sigma_yy_factor2,my_prediction,obs_distn):
+        assert obs_distn._is_diagonal
+        self.Sigma, self.mu # make sure we are in distribution form
+        self._mu += Sigma_xy.dot(solve_diagonal_plus_lowrank(obs_distn._Sigma,Sigma_yy_factor1,
+                                    Sigma_yy_factor2,obs_distn.mu-my_prediction))
+        self._Sigma -= Sigma_xy.dot(solve_diagonal_plus_lowrank(obs_distn._Sigma,Sigma_yy_factor1,
+                                        Sigma_yy_factor2,Sigma_xy.T))
+        self._J = self._h = None # invalidate
+        return self
+
+    ### boilerplate
+
     def condition_on(self,*args,**kwargs):
         return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_condition_on(*args,**kwargs)
+
+    def condition_on_cov(self,*args,**kwargs):
+        return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_condition_on_cov(*args,**kwargs)
 
     def condition_on_diag_plus_lowrank(self,*args,**kwargs):
         return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_condition_on_diag_plus_lowrank(*args,**kwargs)
 
-    def marginalize_agaist(self,*args,**kwargs):
-        return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_marginalize_against(*args,**kwargs)
+    def condition_on_diag_plus_lowrank_cov(self,*args,**kwargs):
+        return self.__class__(mu=self.mu.copy(),Sigma=self.Sigma.copy()).inplace_condition_on_diag_plus_lowrank_cov(*args,**kwargs)
+
+    ### tests
+
+    @classmethod
+    def _test_condition_on(cls):
+        randn = np.random.randn
+        A = randn(3,3); A = A.dot(A.T);
+        B = randn(3,3); B = B.dot(B.T);
+        C = randn(3,3)
+
+        a = cls(np.zeros(3),A)
+        b = cls(np.ones(3),B)
+
+        res1 = a*b.linear_substitution(C)
+        res2 = a.condition_on(C,b)
+
+        assert np.allclose(res1.mu,res2.mu)
+        assert np.allclose(res1.Sigma,res2.Sigma)
+
+    @classmethod
+    def _test_condition_on_diag_plus_lowrank(cls):
+        randn = np.random.randn
+        A = randn(3,3); A = A.dot(A.T)
+        Bdiag = randn(10); Bdiag = Bdiag*Bdiag;
+        C = randn(10,3)
+
+        a = cls(np.zeros(3),A)
+        bdiag = cls(np.ones(10),Bdiag)
+        b = cls(np.ones(10),np.diag(Bdiag))
+
+        res1 = a.condition_on(C,b)
+        res2 = a.condition_on_diag_plus_lowrank(C,bdiag)
+
+        assert np.allclose(res1.mu,res2.mu)
+        assert np.allclose(res1.Sigma,res2.Sigma)
 
