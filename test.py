@@ -6,6 +6,8 @@ import kalman
 from gaussians import Gaussian
 from util import plot_gaussian_2D
 
+### generate some noisy spiral data
+
 theta = 0.1*np.pi
 A = 1.02*np.array([[np.cos(theta), -np.sin(theta)],[np.sin(theta),np.cos(theta)]])
 B = 0.25*np.eye(2)
@@ -19,12 +21,16 @@ for i in range(1,100):
 
 y = (C.dot(x.T) + D.dot(np.random.normal(size=x.shape).T)).T
 
+### run Kalman filters and smoothers
+
 initial_distn = Gaussian(np.zeros(2),np.eye(2))
 
 filtered_distns = kalman.filter_generic(A,B,C,D,initial_distn,y)
 filtered_mus = np.array([d.mu for d in filtered_distns])
 smoothed_distns = kalman.smooth_rts_optimized(A,B,C,D,initial_distn,y)
 smoothed_mus = np.array([d.mu for d in smoothed_distns])
+
+### plot things
 
 plt.plot(x[:,0],x[:,1],'kx-.',label='true state')
 plt.plot(y[:,0],y[:,1],'bx-',label='observations')
