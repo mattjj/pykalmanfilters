@@ -1,9 +1,14 @@
 from __future__ import division
 import numpy as np
 
-from gaussians import Gaussian
+from gaussians import Gaussian, OptimizedGaussian
+
+###############
+#  Filtering  #
+###############
 
 def filter_generic(A,B,C,D,initial_distn,data):
+    'written to use generic operations for transparency'
     n = A.shape[0]
     BBT = B.dot(B.T)
     DDT = D.dot(D.T)
@@ -15,6 +20,26 @@ def filter_generic(A,B,C,D,initial_distn,data):
         next_prediction = forward_distns[-1].linear_transform(A) + Gaussian(mu=np.zeros(n),Sigma=BBT)
 
     return forward_distns
+
+def filter_optimized(A,B,C,D,initial_distn,data):
+    'written to stay in distribution form using solvers'
+    initial_distn = OptimizedGaussian(initial_distn.mu,initial_distn.Sigma)
+
+    n = A.shape[0]
+    BBT = B.dot(B.T)
+    DDT = D.dot(D.T)
+
+    next_prediction = initial_distn
+    forward_distns = []
+    for d in data:
+        forward_distns.append(next_prediction.inplace_condition_on(C,OptimizedGaussian(d,DDT)))
+        next_prediction = forward_distns[-1].linear_transform(A) + OptimizedGaussian(np.zeros(n),BBT)
+
+    return forward_distns
+
+###############
+#  Smoothing  #
+###############
 
 def smooth_generic_twofilter(A,B,C,D,initial_distn,data):
     'two-filter version (not RTS version) written for generic ops, not speed'
@@ -46,22 +71,12 @@ def smooth_generic_twofilter(A,B,C,D,initial_distn,data):
         prev_prediction = backward_distns[-1].linear_substitution(A) + Gaussian(mu=np.zeros(n),Sigma=BBT)
     backward_distns = backward_distns[::-1]
 
-    global gf, gb
-    gf = forward_distns
-    gb = backward_distns
-
     # return smoothed distributions
     return [d1*d2 for d1,d2 in zip(forward_distns,backward_distns)]
 
-# not sure about the right abstraction for this operation yet
-def _rts_backward_step_optimized(A,BBT,dprev,dnext):
-    P_tp1_t = A.dot(dprev.Sigma).dot(A.T) + BBT
-    dprev._mu += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t,dnext.mu - A.dot(dprev.mu)))
-    temp = np.linalg.solve(P_tp1_t,dnext.Sigma)
-    temp.flat[::temp.shape[0]+1] -= 1
-    dprev._Sigma += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t, temp.dot(A).dot(dprev.Sigma)))
-
 def smooth_rts_optimized(A,B,C,D,initial_distn,data):
+    initial_distn = OptimizedGaussian(initial_distn.mu,initial_distn.Sigma)
+
     n = A.shape[0]
     BBT = B.dot(B.T)
     DDT = D.dot(D.T)
@@ -70,13 +85,21 @@ def smooth_rts_optimized(A,B,C,D,initial_distn,data):
     prediction = initial_distn
     distns = []
     for d in data:
-        prediction.inplace_condition_on(C,Gaussian(d,DDT))
+        prediction.inplace_condition_on(C,OptimizedGaussian(d,DDT))
         distns.append(prediction)
-        prediction = prediction.linear_transform(A) + Gaussian(np.zeros(n),BBT)
+        prediction = prediction.linear_transform(A) + OptimizedGaussian(np.zeros(n),BBT)
 
     # backward pass
     for d1,d2 in zip(distns[::-1][1:],distns[:0:-1]):
         _rts_backward_step_optimized(A,BBT,d1,d2)
 
     return distns
+
+# TODO not sure about the right abstraction for this operation yet
+def _rts_backward_step_optimized(A,BBT,dprev,dnext):
+    P_tp1_t = A.dot(dprev.Sigma).dot(A.T) + BBT
+    dprev._mu += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t,dnext.mu - A.dot(dprev.mu)))
+    temp = np.linalg.solve(P_tp1_t,dnext.Sigma)
+    temp.flat[::temp.shape[0]+1] -= 1
+    dprev._Sigma += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t, temp.dot(A).dot(dprev.Sigma)))
 
