@@ -14,9 +14,9 @@ Additionally, there are two smoothing algorithm options: the two-filter version
 and the slightly less clear Rauch-Tung-Striebel version.
 '''
 
-###############
-#  Filtering  #
-###############
+######################
+#  Linear Filtering  #
+######################
 
 def filter_generic(A,B,C,D,initial_distn,data):
     'written to use generic operations for transparency'
@@ -48,9 +48,9 @@ def filter_optimized(A,B,C,D,initial_distn,data):
 
     return forward_distns
 
-###############
-#  Smoothing  #
-###############
+######################
+#  Linear Smoothing  #
+######################
 
 def smooth_generic_twofilter(A,B,C,D,initial_distn,data):
     'two-filter version (not RTS version) written for generic ops, not speed'
@@ -108,12 +108,43 @@ def smooth_rts_optimized(A,B,C,D,initial_distn,data):
     return distns
 
 # TODO not sure about the right abstraction for this operation yet... it should
-# probably be a combination of conditioning operations, but I haven't massaged
-# the algebra into the right form
+# probably be a combination of conditioning and marginalization, but I haven't
+# massaged the algebra into the right form, so for now it's ugly and explicit
 def _rts_backward_step_optimized(A,BBT,dprev,dnext):
     P_tp1_t = A.dot(dprev.Sigma).dot(A.T) + BBT
     dprev._mu += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t,dnext.mu - A.dot(dprev.mu)))
     temp = np.linalg.solve(P_tp1_t,dnext.Sigma)
     temp.flat[::temp.shape[0]+1] -= 1
     dprev._Sigma += dprev.Sigma.dot(A.T).dot(np.linalg.solve(P_tp1_t, temp.dot(A).dot(dprev.Sigma)))
+
+############################################################
+#  Nonlinear Filtering with the Unscented Transform (UKF)  #
+############################################################
+
+from util import unscented_transform
+
+# linear dynamics for now; just nonlinearity in the likelihood
+def ukf_optimized(A,B,f,d,initial_distn,data):
+    initial_distn = OptimizedGaussian(initial_distn.mu,initial_distn.Sigma)
+    dsq = d**2
+    n = A.shape[0]
+    BBT = B.dot(B.T)
+
+    next_prediction = initial_distn
+    forward_distns = []
+    for d in data:
+        points,mean_weights,cov_weights = unscented_transform(next_prediction.mu,next_prediction.Sigma,1,1)
+        Z = f(points)
+        zbar = mean_weights.dot(Z)
+        Sigma_xy = ((points - points[0]).T*cov_weights).dot(Z - zbar)
+        forward_distns.append(next_prediction.inplace_condition_on_diag_plus_lowrank_cov(Sigma_xy,(Z-zbar).T*cov_weights,Z-zbar,zbar,OptimizedGaussian(d,dsq)))
+        next_prediction = forward_distns[-1].linear_transform(A) + OptimizedGaussian(np.zeros(n),BBT)
+
+    return forward_distns
+
+###############################################################
+#  Nonlinear Filtering with First-Order Approximations (EKF)  #
+###############################################################
+
+# TODO
 

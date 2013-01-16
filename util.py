@@ -44,9 +44,7 @@ def inverse_unscented_transform(points,mean_weights,cov_weights):
     return mu, Sigma
 
 def plot_gaussian_2D(mu, lmbda, color='b', centermarker=True):
-    '''
-    Plots mean and cov ellipsoid into current axes. Must be 2D. lmbda is a covariance matrix.
-    '''
+    'Plots mean and cov ellipsoid into current axes. Must be 2D. lmbda is a covariance matrix.'
     assert len(mu) == 2
 
     t = np.hstack([np.arange(0,2*np.pi,0.01),0])
@@ -57,3 +55,7 @@ def plot_gaussian_2D(mu, lmbda, color='b', centermarker=True):
         plt.plot([mu[0]],[mu[1]],marker='D',color=color,markersize=4)
     plt.plot(ellipse[0,:] + mu[0], ellipse[1,:] + mu[1],linestyle='-',linewidth=2,color=color)
 
+def cov(d,weights=None):
+    weights, weightsum = (weights,weights.sum()) if weights is not None else (np.ones(d.shape[0]),d.shape[0])
+    mu = weights.dot(d)/weightsum
+    return (d.T*weights).dot(d)/weightsum - mu[:,na]*mu
