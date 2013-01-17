@@ -62,7 +62,7 @@ def test_ukf():
     ### run unscented kalman filter
 
     initial_distn = Gaussian(x[0],0.1*np.eye(2))
-    filtered_distns = kalman.ukf_optimized(A,B,f,d,initial_distn,y)
+    filtered_distns = kalman.ukf_optimized(A,B,f,d,initial_distn,y,1,1)
 
     ### plot things
 

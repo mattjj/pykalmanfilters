@@ -125,9 +125,9 @@ def _rts_backward_step_optimized(A,BBT,dprev,dnext):
 from util import unscented_transform
 
 # linear dynamics for now; just nonlinearity in the likelihood
-def ukf_optimized(A,B,f,d,initial_distn,data):
+def ukf_optimized(A,B,f,Ddiag,initial_distn,data,alpha,kappa):
     initial_distn = OptimizedGaussian(initial_distn.mu,initial_distn.Sigma)
-    dsq = d**2
+    dsq = Ddiag**2
     n = A.shape[0]
     BBT = B.dot(B.T)
 
@@ -135,7 +135,7 @@ def ukf_optimized(A,B,f,d,initial_distn,data):
     forward_distns = []
     for d in data:
         # map our current state belief into unscented form
-        points,mean_weights,cov_weights = unscented_transform(next_prediction.mu,next_prediction.Sigma,1,1)
+        points,mean_weights,cov_weights = unscented_transform(next_prediction.mu,next_prediction.Sigma,alpha,kappa)
 
         # pass unscented representation through the nonlinear likelihood
         Z = f(points)
