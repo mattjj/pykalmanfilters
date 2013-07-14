@@ -13,6 +13,7 @@ def solve_diagonal_plus_lowrank(diag_of_A,B,C,b):
     b can be a matrix
     see p.673 of Convex Optimization by Boyd and Vandenberghe
     '''
+    # TODO write a psd version where B=C.T
     one_dim = b.ndim == 1
     if one_dim:
         b = np.reshape(b,(-1,1))
