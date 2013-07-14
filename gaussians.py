@@ -1,7 +1,7 @@
 from __future__ import division
 import numpy as np
 
-from util import solve_diagonal_plus_lowrank
+from util import solve_diagonal_plus_lowrank, solve_psd
 
 # TODO split this into two classes, wrap them into one
 
@@ -23,7 +23,7 @@ class Gaussian(object):
     @property
     def mu(self):
         if self._mu is None:
-            self._mu = np.linalg.solve(self._J,self._h) if not self._is_diagonal else self._h / self._J
+            self._mu = solve_psd(self._J,self._h) if not self._is_diagonal else self._h / self._J
         return self._mu
 
     @property
@@ -36,7 +36,7 @@ class Gaussian(object):
     @property
     def h(self):
         if self._h is None:
-            self._h = np.linalg.solve(self._Sigma,self._mu) if not self._is_diagonal else self._mu / self._Sigma
+            self._h = solve_psd(self._Sigma,self._mu) if not self._is_diagonal else self._mu / self._Sigma
         return self._h
 
     @property
@@ -116,8 +116,8 @@ class OptimizedGaussian(Gaussian):
     def inplace_condition_on_cov(self,Sigma_xy,Sigma_yy,my_prediction,obs_distn):
         'cov version useful for linearized approximations; compare to inplace_condition_on for the idea'
         self.Sigma, self.mu # make sure we are in distribution form
-        self._mu += Sigma_xy.dot(np.linalg.solve(Sigma_yy+obs_distn.Sigma,obs_distn.mu - my_prediction))
-        self._Sigma -= Sigma_xy.dot(np.linalg.solve(Sigma_yy+obs_distn.Sigma,Sigma_xy.T))
+        self._mu += Sigma_xy.dot(solve_psd(Sigma_yy+obs_distn.Sigma,obs_distn.mu - my_prediction))
+        self._Sigma -= Sigma_xy.dot(solve_psd(Sigma_yy+obs_distn.Sigma,Sigma_xy.T))
         self._J = self._h = None # invalidate
         return self
 

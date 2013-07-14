@@ -1,7 +1,11 @@
 from __future__ import division
 import numpy as np
 na = np.newaxis
+import scipy.linalg
 from matplotlib import pyplot as plt
+
+def solve_psd(A,b,overwrite_b=False):
+    return scipy.linalg.cho_solve(scipy.linalg.cho_factor(A),b,overwrite_b=overwrite_b)
 
 def solve_diagonal_plus_lowrank(diag_of_A,B,C,b):
     '''
