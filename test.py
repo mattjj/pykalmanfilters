@@ -34,13 +34,13 @@ def test_linear():
     filtered_mus = np.array([d.mu for d in filtered_distns])
     smoothed_mus = np.array([d.mu for d in smoothed_distns])
 
-    plt.plot(x[:,0],x[:,1],'kx-.',label='true state')
     plt.plot(y[:,0],y[:,1],'bx-',label='observations')
     plt.plot(filtered_mus[:,0],filtered_mus[:,1],'g.-',label='filtered')
     plt.plot(smoothed_mus[:,0],smoothed_mus[:,1],'r.-',label='smoothed')
     for df,ds in zip(filtered_distns,smoothed_distns):
         plot_gaussian_2D(df.mu,df.Sigma,color='g',centermarker=False)
         plot_gaussian_2D(ds.mu,ds.Sigma,color='r',centermarker=False)
+    plt.plot(x[:,0],x[:,1],'ko-.',label='true state',markersize=8)
     plt.legend()
 
 def test_ukf():
